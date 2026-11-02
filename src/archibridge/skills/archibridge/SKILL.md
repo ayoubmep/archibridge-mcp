@@ -38,7 +38,7 @@ ArchiBridge users are architects, engineers and BIM coordinators who work in Arc
 1. One `archicad_modify` call per stage, with every item of the stage in one call.
 2. Results have one entry per item, and an item can fail alone. Read them. A successful call does not mean every item worked.
 3. Keep the guids that come back. If you redo a stage, delete only those guids.
-4. After each stage, check your work: go to the right window with `ChangeWindow`, frame it with `FitInWindow`, then call `archicad_view_image` and look at the picture before the next stage.
+4. After each stage, check your work: go to the right window with `ChangeWindow` (`{"windowType": "3DModel"}` for 3D, `{"windowType": "FloorPlan", "storyIndex": 0}` for a plan), frame it with `FitInWindow`, then call `archicad_view_image` and look at the picture before the next stage.
 5. Usual order: stories, walls, slabs, columns and beams, doors and windows, roofs, zones, then documentation.
 
 ## Reading data

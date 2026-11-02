@@ -132,8 +132,9 @@ def archicad_modify(command: str, parameters: dict | None = None, port: int | No
 def archicad_view_image(entire_drawing: bool = False, port: int | None = None) -> Image:
     """Returns a picture of Archicad's current window, so you can check your work.
 
-    Works for the 3D window and for 2D windows. Switch window first with ChangeWindow if
-    needed. entire_drawing: in a 2D window, capture the whole drawing, not just the zoom.
+    Works for the 3D window and for 2D windows. Switch window first if needed, with
+    ChangeWindow and {"windowType": "3DModel"}, or {"windowType": "FloorPlan", "storyIndex": 0},
+    then FitInWindow. entire_drawing: in a 2D window, capture the whole drawing, not just the zoom.
     """
     target = client.pick_port(port)
     folder = tempfile.mkdtemp(prefix="archibridge-")
