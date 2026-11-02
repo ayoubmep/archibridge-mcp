@@ -51,6 +51,7 @@ These were found building a 7,000-element model on Archicad 29. Check them with 
 - To place the camera, read `Get3DProjectionSettings` first, then send every perspective field to `Set3DProjectionSettings`. Keep the camera above the terrain.
 - Thin colored lines along every edge are pen contours, not surfaces. Turn them off with `Change3DStyles`: `shadingContours: 1` was off, and 2 was on. Don't repaint elements to fix them.
 - A rotated `CreateMorphs` box extends along `+xAxis` and `-yAxis`. Check placement with `Get3DBoundingBoxes` before building many.
+- `CreateMorphs` with a `body` can hold many separate solids in one morph, so grouping small details by wall and color keeps the element count low. Every face must be flat, so split faces on slopes into triangles. Holes in morph faces came out filled, so build frames as open shapes and grilles from separate bars.
 - Test on a few elements first. For windows and doors, style one, save it with `CreateFavoritesFromElements`, then build from that favorite.
 - Before a repair that creates elements, count what is really missing. Run it as a dry run, and refuse to continue if the count isn't what you expect.
 
