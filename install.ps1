@@ -2,9 +2,10 @@
 ArchiBridge installer
 
 Connects Claude Desktop (free plan included), Claude Code and ChatGPT / Codex to Archicad
-through a local MCP server, and prepares the Tapir add-on that gives it full model access.
+through a local MCP server, and installs the Tapir add-on that gives it full model access.
 
-Run it in a normal PowerShell window (not as administrator):
+Run it in a normal PowerShell window (not as administrator). Windows asks for permission once,
+to copy Tapir into Archicad's Add-Ons folder in Program Files.
 
     irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.ps1 | iex
 
@@ -149,6 +150,46 @@ function Install-ArchiBridge {
         return $path
     }
 
+    # The folder's name changes with Archicad's language, but it always holds XReadCfg.txt.
+    function Get-AddOnsFolder([int]$Version) {
+        $install = Join-Path $env:ProgramFiles ('Graphisoft\Archicad {0}' -f $Version)
+        foreach ($folder in @(Get-ChildItem -LiteralPath $install -Directory -ErrorAction SilentlyContinue)) {
+            if (Test-Path -LiteralPath (Join-Path $folder.FullName 'XReadCfg.txt')) { return $folder.FullName }
+        }
+        return $null
+    }
+
+    # Archicad loads what is in its Add-Ons folder, which is how Tapir's own installer works.
+    # Program Files needs administrator rights, so only this copy is elevated. An existing
+    # Tapir is never replaced: it may be newer, and Archicad locks it while running.
+    function Install-TapirAddOn([string]$Source, [string]$AddOnsFolder, [string]$ExpectedHash) {
+        if (@(Get-ChildItem -LiteralPath $AddOnsFolder -Recurse -Filter 'TapirAddOn_*.apx' -ErrorAction SilentlyContinue).Count -gt 0) {
+            return 'present'
+        }
+        $name = Split-Path -Leaf $Source
+        $command = @'
+$ErrorActionPreference = 'Stop'
+$tapir = Join-Path '@ADDONS@' 'Tapir'
+New-Item -ItemType Directory -Path $tapir -Force | Out-Null
+$target = Join-Path $tapir '@NAME@'
+Copy-Item -LiteralPath '@SOURCE@' -Destination $target -Force
+if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { Remove-Item -LiteralPath $target -Force; exit 3 }
+'@
+        $command = (($command -split "`r?`n") -join '; ').Replace('@ADDONS@', $AddOnsFolder.Replace("'", "''")).Replace('@NAME@', $name).Replace('@SOURCE@', $Source.Replace("'", "''")).Replace('@HASH@', $ExpectedHash)
+        $arguments = '-NoProfile -ExecutionPolicy Bypass -Command "' + $command + '"'
+        try {
+            $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList $arguments
+        }
+        catch {
+            return 'declined'
+        }
+        $target = Join-Path $AddOnsFolder ('Tapir\' + $name)
+        if ($process.ExitCode -eq 0 -and (Test-Path -LiteralPath $target) -and ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -eq $ExpectedHash)) {
+            return 'installed'
+        }
+        return 'failed'
+    }
+
     # Claude Desktop may keep its config per profile under Claude-Data instead of Roaming.
     # Roaming is only created when no other config exists, so a file nothing reads is never made.
     function Get-ClaudeDesktopConfigPaths {
@@ -286,19 +327,36 @@ function Install-ArchiBridge {
     }
     Write-Ok ('Server installed: {0}' -f $server)
 
-    # 4. Tapir add-on files
+    # 4. Tapir add-on
     $tapirFolder = Join-Path $env:LOCALAPPDATA ('ArchiBridge\Tapir\' + $TapirVersion)
-    $tapirFiles = @()
+    $tapirManual = @()
+    $tapirAdded = $false
     foreach ($version in $versions) {
         try {
-            $tapirFiles += Get-TapirAddOn $version $tapirFolder
+            $file = Get-TapirAddOn $version $tapirFolder
+            $addOns = Get-AddOnsFolder $version
+            if (-not $addOns) {
+                Write-Note ('The Add-Ons folder of Archicad {0} was not found.' -f $version)
+                $tapirManual += $file
+                continue
+            }
+            Write-Step ('Adding Tapir to Archicad {0}. Windows asks for permission if it is missing: click Yes.' -f $version)
+            $state = Install-TapirAddOn $file $addOns $TapirHashes[$version]
+            if ($state -eq 'present') {
+                Write-Ok ('Tapir is already in Archicad {0}: left as it is.' -f $version)
+            }
+            elseif ($state -eq 'installed') {
+                Write-Ok ('Tapir {0} added to Archicad {1}, and its hash is verified.' -f $TapirVersion, $version)
+                $tapirAdded = $true
+            }
+            else {
+                Write-Note ('Tapir was not added to Archicad {0} ({1}).' -f $version, $state)
+                $tapirManual += $file
+            }
         }
         catch {
             Write-Note ('Could not get Tapir for Archicad {0}: {1}' -f $version, $_.Exception.Message)
         }
-    }
-    if ($tapirFiles.Count -gt 0) {
-        Write-Ok ('Tapir {0} is ready, and its hash is verified: {1}' -f $TapirVersion, ($tapirFiles -join ', '))
     }
 
     # 5. MCP clients
@@ -377,9 +435,17 @@ function Install-ArchiBridge {
     }
     Write-Host ''
     Write-Host 'Next steps:' -ForegroundColor White
-    Write-Host '  1. In Archicad, open a project, then add the Tapir add-on once:'
-    Write-Host '     Options > Add-On Manager > Edit List of Available Add-Ons > Add, and pick:'
-    foreach ($file in $tapirFiles) { Write-Host ('     ' + $file) }
+    if ($tapirAdded -and (Get-Process -Name 'Archicad' -ErrorAction SilentlyContinue)) {
+        Write-Host '  1. Save your work and restart Archicad so it loads Tapir, then open a project.'
+    }
+    else {
+        Write-Host '  1. Start Archicad and open a project.'
+    }
+    if ($tapirManual.Count -gt 0) {
+        Write-Host '     To add Tapir yourself, run the installer again and click Yes, or in Archicad use'
+        Write-Host '     Options > Add-On Manager > Edit List of Available Add-Ons > Add, and pick:'
+        foreach ($file in $tapirManual) { Write-Host ('     ' + $file) }
+    }
     Write-Host '  2. Quit your AI app completely and open it again.'
     Write-Host '     Claude Desktop: right-click the Claude icon near the clock > Quit. Claude Code: start a new session.'
     Write-Host '  3. Try: "Read the archibridge skill, then describe my open Archicad project."'

@@ -29,7 +29,7 @@ Install ArchiBridge to connect Claude to my Archicad: https://github.com/ayoubme
 Follow INSTALL.md step by step, then tell me what to do next.
 ```
 
-Claude asks for permission before each command.
+Claude asks for permission before each command. Windows also asks once, to copy Tapir into Archicad's folder: click **Yes**.
 
 ### Option B: one command (free plan, or without Claude Code)
 
@@ -41,7 +41,7 @@ irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.ps1 
 
 ### Then
 
-1. In Archicad, open a project. Add Tapir once: **Options > Add-On Manager > Edit List of Available Add-Ons > Add**, then choose the `.apx` file the installer printed.
+1. Restart Archicad so it loads Tapir, then open a project.
 2. Quit your AI app completely and open it again. For Claude Desktop: right-click the Claude icon near the clock, then **Quit**.
 3. Try one of the prompts below.
 
@@ -95,11 +95,11 @@ Run the install command again. It updates everything without duplicating anythin
 
 ## Uninstall
 
-First remove Tapir in Archicad's Add-On Manager, then run:
-
 ```powershell
 irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.ps1 | iex
 ```
+
+Tapir stays in Archicad, because other tools can use it.
 
 ## Troubleshooting
 
@@ -107,7 +107,7 @@ irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.ps
 |---|---|
 | The AI doesn't see the `archicad_*` tools | Quit the app completely (icon near the clock > Quit) and reopen it. |
 | "Archicad has no open project" | Open a project. Archicad's API answers only then. |
-| "needs the Tapir add-on" | Add Tapir in the Add-On Manager, see [Then](#then). |
+| "needs the Tapir add-on" | Restart Archicad. If it persists, run the installer again and click **Yes** at the Windows prompt. |
 | "Several Archicads are ready" | Tell the AI which project to use, or close one Archicad. |
 | Commands time out | Archicad may be showing a dialog. Close it. |
 | Something else | Open an [issue](../../issues) and attach `%TEMP%\archibridge-install.log`. |

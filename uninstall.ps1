@@ -2,7 +2,7 @@
 ArchiBridge uninstaller
 
 Removes the archicad MCP connection from your AI apps, the ArchiBridge server and the
-downloaded Tapir files. Archicad and your projects are not touched.
+downloaded Tapir files. Archicad, the Tapir add-on inside it and your projects are not touched.
 
     irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.ps1 | iex
 #>
@@ -105,11 +105,11 @@ function Uninstall-ArchiBridge {
     }
 
     $folder = Join-Path $env:LOCALAPPDATA 'ArchiBridge'
-    Write-Note 'If Archicad loads Tapir from this folder, first remove it in Options > Add-On Manager.'
     if (Test-Path -LiteralPath $folder) {
         Remove-Item -LiteralPath $folder -Recurse -Force
         Write-Ok ('Removed {0}' -f $folder)
     }
+    Write-Note 'Tapir stays in Archicad, because other tools can use it. To remove it, delete the Tapir folder in Archicad''s Add-Ons folder.'
     Write-Host ''
 }
 
