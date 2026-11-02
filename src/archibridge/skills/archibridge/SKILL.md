@@ -42,6 +42,18 @@ ArchiBridge users are architects, engineers and BIM coordinators who work in Arc
 5. Usual order: stories, walls, slabs, columns and beams, doors and windows, roofs, zones, then documentation.
 6. There is no undo command. The user can press Ctrl+Z in Archicad, and one press undid a whole `CreateWalls` call in testing, so tell the user what one stage would take back. To remove a stage yourself, delete its guids.
 
+## Trust the picture only after a refresh
+
+These were found building a 7,000-element model on Archicad 29. Check them with a schema or a test on your version.
+
+- The 3D window caches its model. After changing materials, surfaces, or GDL parameters, call `RebuildView` with `{"regenerate": true}` before `archicad_view_image`, or the picture shows the old state and a test proves nothing. After a camera change, call `RebuildView`.
+- `GetElementPreviewImage` renders one element fresh. Use it to see what an element really looks like.
+- To place the camera, read `Get3DProjectionSettings` first, then send every perspective field to `Set3DProjectionSettings`. Keep the camera above the terrain.
+- Thin colored lines along every edge are pen contours, not surfaces. Turn them off with `Change3DStyles`: `shadingContours: 1` was off, and 2 was on. Don't repaint elements to fix them.
+- A rotated `CreateMorphs` box extends along `+xAxis` and `-yAxis`. Check placement with `Get3DBoundingBoxes` before building many.
+- Test on a few elements first. For windows and doors, style one, save it with `CreateFavoritesFromElements`, then build from that favorite.
+- Before a repair that creates elements, count what is really missing. Run it as a dry run, and refuse to continue if the count isn't what you expect.
+
 ## Reading data
 
 - `GetElementsByType` or `GetAllElements` gives ids. `GetDetailsOfElements` gives geometry: pass `fields` to keep it fast.

@@ -122,7 +122,7 @@ def _definitions(roots: list, depth: int) -> tuple[dict, list[str]]:
 def schema(name: str, depth: int = SCHEMA_DEPTH) -> dict:
     """Returns a command's schemas, or one shared definition by its own name."""
     name = name.removeprefix("#/")
-    if name.startswith("API.") or name in _data()["builtin"]:
+    if name.startswith("API.") or (name in _data()["builtin"] and name not in _by_name()):
         return {
             "name": resolve(name),
             "access": policy.classify(name),

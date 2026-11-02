@@ -57,6 +57,11 @@ def test_schema_of_a_builtin_points_to_the_docs():
     assert found["documentation"].startswith("https://")
 
 
+def test_a_name_in_both_tapir_and_builtin_gives_the_tapir_schema():
+    assert "input" in catalog.schema("GetElementsByType")
+    assert "documentation" in catalog.schema("API.GetElementsByType")
+
+
 def test_shallow_schema_lists_what_it_left_out():
     found = catalog.schema("GetDetailsOfElements", depth=1)
     assert found["moreDefinitions"]
