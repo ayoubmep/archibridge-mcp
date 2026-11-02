@@ -149,8 +149,17 @@ function Install-ArchiBridge {
         return $path
     }
 
+    # Claude Desktop may keep its config per profile under Claude-Data instead of Roaming.
+    # Roaming is only created when no other config exists, so a file nothing reads is never made.
     function Get-ClaudeDesktopConfigPaths {
-        $paths = @((Join-Path $env:APPDATA 'Claude\claude_desktop_config.json'))
+        $paths = @()
+        $dataRoot = Join-Path $env:LOCALAPPDATA 'Claude-Data'
+        if (Test-Path -LiteralPath $dataRoot) {
+            foreach ($folder in @(Get-ChildItem -LiteralPath $dataRoot -Directory -ErrorAction SilentlyContinue)) {
+                $candidate = Join-Path $folder.FullName 'claude_desktop_config.json'
+                if (Test-Path -LiteralPath $candidate) { $paths += $candidate }
+            }
+        }
         $packages = Join-Path $env:LOCALAPPDATA 'Packages'
         if (Test-Path -LiteralPath $packages) {
             foreach ($package in @(Get-ChildItem -LiteralPath $packages -Directory -Filter '*Claude*' -ErrorAction SilentlyContinue)) {
@@ -158,6 +167,8 @@ function Install-ArchiBridge {
                 if (Test-Path -LiteralPath $candidate) { $paths += $candidate }
             }
         }
+        $roaming = Join-Path $env:APPDATA 'Claude\claude_desktop_config.json'
+        if ($paths.Count -eq 0 -or (Test-Path -LiteralPath $roaming)) { $paths += $roaming }
         return $paths
     }
 
@@ -309,7 +320,7 @@ function Install-ArchiBridge {
         Write-Note 'Claude Code command not found: skipped (normal if you only use Claude Desktop).'
     }
 
-    $desktopFound = (Test-Path -LiteralPath (Join-Path $env:APPDATA 'Claude')) -or (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'AnthropicClaude'))
+    $desktopFound = (Test-Path -LiteralPath (Join-Path $env:APPDATA 'Claude')) -or (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'AnthropicClaude')) -or (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Claude-Data'))
     $desktopDone = $false
     foreach ($path in @(Get-ClaudeDesktopConfigPaths)) {
         try {

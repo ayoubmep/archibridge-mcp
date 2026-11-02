@@ -78,6 +78,12 @@ function Uninstall-ArchiBridge {
     }
 
     Remove-ClaudeDesktopEntry (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json')
+    $dataRoot = Join-Path $env:LOCALAPPDATA 'Claude-Data'
+    if (Test-Path -LiteralPath $dataRoot) {
+        foreach ($folder in @(Get-ChildItem -LiteralPath $dataRoot -Directory -ErrorAction SilentlyContinue)) {
+            Remove-ClaudeDesktopEntry (Join-Path $folder.FullName 'claude_desktop_config.json')
+        }
+    }
     $packages = Join-Path $env:LOCALAPPDATA 'Packages'
     if (Test-Path -LiteralPath $packages) {
         foreach ($package in @(Get-ChildItem -LiteralPath $packages -Directory -Filter '*Claude*' -ErrorAction SilentlyContinue)) {
