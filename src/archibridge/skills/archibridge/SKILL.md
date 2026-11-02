@@ -40,6 +40,7 @@ ArchiBridge users are architects, engineers and BIM coordinators who work in Arc
 3. Keep the guids that come back. If you redo a stage, delete only those guids.
 4. After each stage, check your work: go to the right window with `ChangeWindow` (`{"windowType": "3DModel"}` for 3D, `{"windowType": "FloorPlan", "storyIndex": 0}` for a plan), frame it with `FitInWindow`, then call `archicad_view_image` and look at the picture before the next stage.
 5. Usual order: stories, walls, slabs, columns and beams, doors and windows, roofs, zones, then documentation.
+6. There is no undo command. The user can press Ctrl+Z in Archicad, and one press undid a whole `CreateWalls` call in testing, so tell the user what one stage would take back. To remove a stage yourself, delete its guids.
 
 ## Reading data
 

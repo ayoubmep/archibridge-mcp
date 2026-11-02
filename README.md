@@ -18,6 +18,12 @@ It uses Archicad's own local JSON API and the open-source [Tapir](https://github
 
 MEP commands need Archicad 28 or newer.
 
+## Tested with
+
+Archicad 29.0.0 (build 3000, INT) and Tapir 1.7.3, on Windows 11: install, reading a project, creating walls, plan and 3D pictures, and undo. A single Ctrl+Z undid a whole `CreateWalls` call.
+
+Other Archicad versions, other languages and the MEP review have not been tested yet.
+
 ## Install
 
 ### Option A: one prompt (Claude Pro or higher)
