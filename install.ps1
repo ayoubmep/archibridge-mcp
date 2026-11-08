@@ -282,7 +282,8 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
     Write-Host ''
 
     if ($env:OS -ne 'Windows_NT') {
-        Write-Fail 'This installer is for Windows.'
+        Write-Fail 'This installer is for Windows. On macOS, run this in Terminal instead:'
+        Write-Host ('     curl -fsSL https://raw.githubusercontent.com/{0}/{1}/install.sh | bash' -f $Repo, $Branch)
         return
     }
     if (Test-IsAdmin) {

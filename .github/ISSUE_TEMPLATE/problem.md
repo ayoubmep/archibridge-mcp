@@ -9,7 +9,8 @@ labels: ''
 Describe the problem and what you expected.
 
 **Your setup**
-- Windows version:
+- Windows or macOS, and its version:
+- Mac only: Apple silicon or Intel:
 - Archicad version and language:
 - AI app (Claude Desktop, Claude Code, ChatGPT) and plan:
 
@@ -19,4 +20,6 @@ paste here
 ```
 
 **Install log**
-Attach the file `%TEMP%\archibridge-install.log` (drag it into this field).
+Attach the install log (drag it into this field):
+- Windows: `%TEMP%\archibridge-install.log`
+- macOS: `~/Library/Logs/archibridge-install.log`
