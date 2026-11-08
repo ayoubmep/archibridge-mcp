@@ -1,8 +1,13 @@
-# Tests the server, and runs the installers for real on GitHub's macOS runners.
+# Tests the server, and runs the macOS installer for real on GitHub's Macs.
 #
-# What CI can't cover: a real Archicad (none runs here, so Tapir is unzipped into a fake
-# Archicad folder and `doctor` finds no instance), and the macOS password prompt (the fake
-# Add-Ons folder is writable, so the installer never needs it).
+# The macOS job checks what the simulated-Mac tests check, on a real Mac: the bash 3.2 that
+# ships with macOS, only macOS's own tools on PATH, uv installed from astral.sh, the Tapir
+# downloads and their signatures, the Add-Ons folder in several languages, the Claude
+# Desktop, Claude Code and Codex configs, running again, piped from curl, and uninstall.
+#
+# What CI can't cover: a real Archicad (none runs here, so Tapir goes into fake Archicad
+# folders and `doctor` finds no instance), and the macOS password prompt (the fake Add-Ons
+# folders are writable, so the installer never needs it).
 name: Installers
 
 on:
@@ -54,61 +59,175 @@ jobs:
         # Apple silicon and Intel.
         os: [macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
-      - name: Make a fake Archicad 29 folder
+      - name: Show the system
         run: |
-          apps="$RUNNER_TEMP/Applications"
-          mkdir -p "$apps/GRAPHISOFT/Archicad 29/Archicad 29.app/Contents" "$apps/GRAPHISOFT/Archicad 29/Add-Ons"
-          touch "$apps/GRAPHISOFT/Archicad 29/Add-Ons/XReadCfg.txt"
-          echo "ARCHIBRIDGE_APPLICATIONS=$apps" >> "$GITHUB_ENV"
-          echo "ADDONS=$apps/GRAPHISOFT/Archicad 29/Add-Ons" >> "$GITHUB_ENV"
+          sw_vers
+          uname -m
+          /bin/bash --version | head -n 1
+
+      - name: Make fake Archicad folders and existing configs
+        run: |
+          g="$RUNNER_TEMP/Applications/GRAPHISOFT"
+          mkdir -p "$g/Archicad 29/Archicad 29.app/Contents" "$g/Archicad 29/Add-Ons" "$g/Archicad 29/Archicad Library 29"
+          touch "$g/Archicad 29/Add-Ons/XReadCfg.txt"
+          # French Archicad: the Add-Ons folder is called Extensions.
+          mkdir -p "$g/Archicad 28/Archicad 28.app" "$g/Archicad 28/Extensions"
+          touch "$g/Archicad 28/Extensions/XReadCfg.txt"
+          # Russian Archicad: a name with no ASCII letters, found through XReadCfg.txt.
+          mkdir -p "$g/Archicad 27/Archicad 27.app" "$g/Archicad 27/Расширения ArchiCAD"
+          touch "$g/Archicad 27/Расширения ArchiCAD/XReadCfg.txt"
+          # A Tapir that is already there must be left as it is.
+          mkdir -p "$g/Archicad 26/Archicad 26.app" "$g/Archicad 26/Add-Ons/Tapir/TapirAddOn_AC26_Mac.bundle/Contents"
+          mkdir -p "$g/Archicad 25/Archicad 25.app" "$g/Archicad 25/Add-Ons"
+          touch "$g/Archicad 25/Add-Ons/XReadCfg.txt"
+          # No Add-Ons folder: the installer prints a bundle to add by hand.
+          mkdir -p "$g/Archicad 30/Archicad 30.app"
+          # Ignored: a version without a Tapir build, and a folder without the Archicad app.
+          mkdir -p "$g/Archicad 24/Archicad 24.app" "$g/Archicad 24/Add-Ons" "$g/Archicad 29 Old/Add-Ons"
+          echo "ARCHIBRIDGE_APPLICATIONS=$RUNNER_TEMP/Applications" >> "$GITHUB_ENV"
+          echo "G=$g" >> "$GITHUB_ENV"
+          # A Claude Desktop config with another server, which must be kept, and a Codex folder.
+          desktop="$HOME/Library/Application Support/Claude"
+          mkdir -p "$desktop" "$HOME/.codex"
+          printf '{"mcpServers": {"other": {"command": "npx", "args": ["-y", "thing"]}}, "preferences": {"menuBarEnabled": false}}\n' > "$desktop/claude_desktop_config.json"
+          cp "$desktop/claude_desktop_config.json" "$RUNNER_TEMP/desktop-original.json"
+          printf 'model = "o3"\n' > "$HOME/.codex/config.toml"
+
+      - name: Remove the runner's uv, which most Macs don't have
+        run: |
+          for path in $(type -ap uv) "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv" /opt/homebrew/bin/uv /usr/local/bin/uv; do
+            sudo rm -f "$path"
+          done
+          if command -v uv; then echo "uv is still on PATH"; exit 1; fi
 
       - name: Install Claude Code, so the installer registers the server with it
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          # The installer runs with only macOS's own tools on PATH, plus this folder.
+          echo "MACOS_PATH=/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$(command -v claude)")" >> "$GITHUB_ENV"
 
-      - name: Run the installer from this checkout
-        run: bash install.sh | tee install-1.txt
+      - name: Install with /bin/bash and macOS's own tools
+        run: env PATH="$MACOS_PATH" /bin/bash install.sh | tee install-1.txt
 
       - name: Check the install
         run: |
           if grep -F '[XX]' install-1.txt; then exit 1; fi
-          grep -F '[OK] Tapir 1.7.3 added to Archicad 29' install-1.txt
-          bundle="$ADDONS/Tapir/TapirAddOn_AC29_Mac.bundle"
-          test -x "$bundle/Contents/MacOS/TapirAddOn_AC29_Mac"
-          codesign --verify --deep --strict --verbose=2 "$bundle"
+          grep -F '[OK] Archicad found: 25, 26, 27, 28, 29, 30' install-1.txt
+          grep -F '[..] Installing uv from astral.sh' install-1.txt
+          grep -F '[OK] Tapir is already in Archicad 26: left as it is.' install-1.txt
+          grep -F '[!!] The Add-Ons folder of Archicad 30 was not found.' install-1.txt
+          for place in "Archicad 25/Add-Ons" "Archicad 27/Расширения ArchiCAD" "Archicad 28/Extensions" "Archicad 29/Add-Ons"; do
+            version=${place%%/*}
+            version=${version#Archicad }
+            bundle="$G/$place/Tapir/TapirAddOn_AC${version}_Mac.bundle"
+            test -x "$bundle/Contents/MacOS/TapirAddOn_AC${version}_Mac"
+            codesign --verify --deep --strict "$bundle"
+          done
+          test ! -e "$G/Archicad 26/Add-Ons/Tapir/TapirAddOn_AC26_Mac.bundle/Contents/MacOS"
+          test ! -e "$G/Archicad 24/Add-Ons/Tapir"
+          test ! -e "$G/Archicad 29 Old/Add-Ons/Tapir"
+          manual="$HOME/Library/Application Support/ArchiBridge/Tapir/1.7.3/TapirAddOn_AC30_Mac/TapirAddOn_AC30_Mac.bundle"
+          grep -F "$manual" install-1.txt
+          codesign --verify --deep --strict "$manual"
+          cmp "$HOME/Library/Application Support/Claude/claude_desktop_config.json.archibridge-backup" "$RUNNER_TEMP/desktop-original.json"
           python3 - <<'EOF'
           import json, os
-          server = os.path.expanduser('~/.local/bin/archibridge')
-          desktop = os.path.expanduser('~/Library/Application Support/Claude/claude_desktop_config.json')
-          assert json.load(open(desktop))['mcpServers']['archicad']['command'] == server
-          code = json.load(open(os.path.expanduser('~/.claude.json')))['mcpServers']['archicad']
+          home = os.path.expanduser('~')
+          server = home + '/.local/bin/archibridge'
+          desktop = json.load(open(home + '/Library/Application Support/Claude/claude_desktop_config.json'))
+          assert desktop['mcpServers']['archicad'] == {'command': server}, desktop
+          assert desktop['mcpServers']['other']['args'] == ['-y', 'thing'], desktop
+          assert desktop['preferences'] == {'menuBarEnabled': False}, desktop
+          code = json.load(open(home + '/.claude.json'))['mcpServers']['archicad']
           assert code['command'] == server, code
           EOF
+          if ! command -v codex; then
+            grep -F "command = '$HOME/.local/bin/archibridge'" "$HOME/.codex/config.toml"
+          fi
           "$HOME/.local/bin/archibridge" --version
           # doctor exits with 1 when no Archicad is ready, which is the case here.
           "$HOME/.local/bin/archibridge" doctor | tee doctor.json || true
           python3 -c "import json; assert json.load(open('doctor.json'))['instances'] == []"
           test -s "$HOME/Library/Logs/archibridge-install.log"
 
-      - name: Run the installer again
+      - name: Run again, with a damaged download in the cache
         run: |
-          bash install.sh | tee install-2.txt
+          echo damaged > "$HOME/Library/Application Support/ArchiBridge/Tapir/1.7.3/TapirAddOn_AC29_Mac.zip"
+          env PATH="$MACOS_PATH" /bin/bash install.sh | tee install-2.txt
           if grep -F '[XX]' install-2.txt; then exit 1; fi
-          grep -F '[OK] Tapir is already in Archicad 29: left as it is.' install-2.txt
+          grep -F '[OK] uv found:' install-2.txt
+          test "$(grep -cF '[..] Downloading' install-2.txt)" = 1
+          grep -F '[..] Downloading TapirAddOn_AC29_Mac.zip...' install-2.txt
+          for version in 25 26 27 28 29; do
+            grep -F "[OK] Tapir is already in Archicad $version: left as it is." install-2.txt
+          done
+          cmp "$HOME/Library/Application Support/Claude/claude_desktop_config.json.archibridge-backup" "$RUNNER_TEMP/desktop-original.json"
           test "$(grep -c '"archicad"' "$HOME/Library/Application Support/Claude/claude_desktop_config.json")" = 1
+          if ! command -v codex; then
+            grep -F '[OK] ChatGPT / Codex: already configured.' install-2.txt
+            test "$(grep -cF '[mcp_servers.archicad]' "$HOME/.codex/config.toml")" = 1
+          fi
+
+      - name: Run piped from curl, as users do
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          ARCHIBRIDGE_REPO: ${{ github.repository }}
+          ARCHIBRIDGE_BRANCH: ${{ github.head_ref || github.ref_name }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/$ARCHIBRIDGE_REPO/$COMMIT/install.sh" | env PATH="$MACOS_PATH" /bin/bash | tee install-3.txt
+          if grep -F '[XX]' install-3.txt; then exit 1; fi
+          grep -F "[..] Installing the ArchiBridge server from https://github.com/$ARCHIBRIDGE_REPO/archive/refs/heads/$ARCHIBRIDGE_BRANCH.zip..." install-3.txt
+          grep -F '[OK] ArchiBridge is installed.' install-3.txt
+
+      - name: Leave a Claude Desktop config that is not valid JSON untouched
+        run: |
+          config="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+          cp "$config" "$RUNNER_TEMP/good.json"
+          printf '{ "mcpServers": { "x": 1, } ' > "$config"
+          cp "$config" "$RUNNER_TEMP/bad.json"
+          env PATH="$MACOS_PATH" /bin/bash install.sh | tee install-4.txt
+          if grep -F '[XX]' install-4.txt; then exit 1; fi
+          cmp "$config" "$RUNNER_TEMP/bad.json"
+          grep -F 'claude_desktop_config.json is not valid JSON, left untouched.' install-4.txt
+          cp "$RUNNER_TEMP/good.json" "$config"
 
       - name: Uninstall
         run: |
-          bash uninstall.sh | tee uninstall.txt
+          env PATH="$MACOS_PATH" /bin/bash uninstall.sh | tee uninstall-1.txt
+          if grep -F '[XX]' uninstall-1.txt; then exit 1; fi
+          grep -F '[OK] Claude Code: removed.' uninstall-1.txt
+          grep -F '[OK] Claude Desktop: removed from' uninstall-1.txt
+          grep -F '[OK] ArchiBridge server: removed.' uninstall-1.txt
           test ! -e "$HOME/.local/bin/archibridge"
           test ! -e "$HOME/Library/Application Support/ArchiBridge"
           python3 - <<'EOF'
           import json, os
-          desktop = os.path.expanduser('~/Library/Application Support/Claude/claude_desktop_config.json')
-          assert 'archicad' not in json.load(open(desktop)).get('mcpServers', {})
-          assert 'archicad' not in json.load(open(os.path.expanduser('~/.claude.json'))).get('mcpServers', {})
+          home = os.path.expanduser('~')
+          desktop = json.load(open(home + '/Library/Application Support/Claude/claude_desktop_config.json'))
+          assert sorted(desktop['mcpServers']) == ['other'], desktop
+          assert 'archicad' not in json.load(open(home + '/.claude.json')).get('mcpServers', {})
           EOF
+          if ! command -v codex; then
+            if grep -F 'archicad' "$HOME/.codex/config.toml"; then exit 1; fi
+            grep -F 'model = "o3"' "$HOME/.codex/config.toml"
+          fi
           # Tapir stays in Archicad, because other tools can use it.
-          test -d "$ADDONS/Tapir/TapirAddOn_AC29_Mac.bundle"
+          test -d "$G/Archicad 29/Add-Ons/Tapir/TapirAddOn_AC29_Mac.bundle"
+
+      - name: Uninstall again, with nothing left to remove
+        run: |
+          env PATH="$MACOS_PATH" /bin/bash uninstall.sh | tee uninstall-2.txt
+          if grep -F '[XX]' uninstall-2.txt; then exit 1; fi
+
+      - name: Refuse to run with sudo
+        run: |
+          if out=$(sudo /bin/bash install.sh 2>&1); then echo "$out"; echo "The installer ran as root."; exit 1; fi
+          echo "$out"
+          echo "$out" | grep -F '[XX] This runs as root (sudo).'
+          # For the record: whether sudo kept HOME, and so who owns the log now.
+          ls -l "$HOME/Library/Logs/archibridge-install.log" || true
