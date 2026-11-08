@@ -244,10 +244,34 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
         }
         $entry = New-Object PSObject
         $entry | Add-Member -MemberType NoteProperty -Name 'command' -Value $Exe
+        # Keep the environment variables of an earlier entry, such as ARCHIBRIDGE_POLICY.
+        $old = $null
+        if ($config.mcpServers.PSObject.Properties.Name -contains $McpName) { $old = $config.mcpServers.$McpName }
+        if ($old -and ($old.PSObject.Properties.Name -contains 'env') -and $old.env -and @($old.env.PSObject.Properties).Count -gt 0) {
+            $entry | Add-Member -MemberType NoteProperty -Name 'env' -Value $old.env
+        }
         $config.mcpServers | Add-Member -MemberType NoteProperty -Name $McpName -Value $entry -Force
 
         Write-Utf8File $Path ($config | ConvertTo-Json -Depth 64)
         return $true
+    }
+
+    # The archicad entry that Claude Code keeps at user scope in its .claude.json, or $null.
+    function Get-ClaudeCodeEntry {
+        $folder = $env:USERPROFILE
+        if ($env:CLAUDE_CONFIG_DIR) { $folder = $env:CLAUDE_CONFIG_DIR }
+        $path = Join-Path $folder '.claude.json'
+        if (-not (Test-Path -LiteralPath $path)) { return $null }
+        try {
+            $config = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json
+        }
+        catch {
+            return $null
+        }
+        if (($config -is [System.Management.Automation.PSCustomObject]) -and $config.mcpServers -and ($config.mcpServers.PSObject.Properties.Name -contains $McpName)) {
+            return $config.mcpServers.$McpName
+        }
+        return $null
     }
 
     # Adds [mcp_servers.archicad] to Codex's config.toml when the codex command is not available.
@@ -365,14 +389,30 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
 
     $claudeCli = Find-Tool 'claude'
     if ($claudeCli) {
-        Write-Step 'Registering the archicad MCP server with Claude Code...'
-        [void](Get-NativeText $claudeCli @('mcp', 'remove', '--scope', 'user', $McpName))
-        if ((Invoke-Native $claudeCli @('mcp', 'add', '--scope', 'user', $McpName, '--', $server)) -eq 0) {
-            Write-Ok 'Claude Code: done (user scope).'
+        # An entry that already runs this server is left as it is, with any settings the user added.
+        $existing = Get-ClaudeCodeEntry
+        if ($existing -and ($existing.PSObject.Properties.Name -contains 'command') -and ($existing.command -eq $server)) {
+            Write-Ok 'Claude Code: already registered (user scope).'
             $configured += 'Claude Code'
         }
         else {
-            Write-Note ('Claude Code registration failed. Try later: claude mcp add --scope user {0} -- "{1}"' -f $McpName, $server)
+            Write-Step 'Registering the archicad MCP server with Claude Code...'
+            [void](Get-NativeText $claudeCli @('mcp', 'remove', '--scope', 'user', $McpName))
+            # Keep the environment variables of an earlier entry. -e takes a list, so it must come after the name.
+            $claudeArguments = @('mcp', 'add', '--scope', 'user', $McpName)
+            if ($existing -and ($existing.PSObject.Properties.Name -contains 'env') -and $existing.env) {
+                foreach ($property in @($existing.env.PSObject.Properties)) {
+                    $claudeArguments += @('-e', ('{0}={1}' -f $property.Name, $property.Value))
+                }
+            }
+            $claudeArguments += @('--', $server)
+            if ((Invoke-Native $claudeCli $claudeArguments) -eq 0) {
+                Write-Ok 'Claude Code: done (user scope).'
+                $configured += 'Claude Code'
+            }
+            else {
+                Write-Note ('Claude Code registration failed. Try later: claude mcp add --scope user {0} -- "{1}"' -f $McpName, $server)
+            }
         }
     }
     else {

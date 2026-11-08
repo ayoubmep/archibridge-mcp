@@ -311,8 +311,34 @@ def desktop_add(path, name, command):
             shutil.copyfile(path, backup)
     if not isinstance(config.get('mcpServers'), dict):
         config['mcpServers'] = {}
-    config['mcpServers'][name] = {'command': command}
+    entry = {'command': command}
+    # Keep the environment variables of an earlier entry, such as ARCHIBRIDGE_POLICY.
+    old = config['mcpServers'].get(name)
+    if isinstance(old, dict) and isinstance(old.get('env'), dict) and old['env']:
+        entry['env'] = old['env']
+    config['mcpServers'][name] = entry
     write(path, json.dumps(config, indent=2, ensure_ascii=False) + '\n')
+    return 0
+
+
+def claude_code_entry(path, name):
+    """Prints the command of Claude Code's user-scope <name> entry, then its env as KEY=VALUE lines."""
+    raw = read(path)
+    if not raw.strip():
+        return 10
+    try:
+        config = json.loads(raw)
+    except ValueError:
+        return 2
+    servers = config.get('mcpServers') if isinstance(config, dict) else None
+    entry = servers.get(name) if isinstance(servers, dict) else None
+    if not isinstance(entry, dict):
+        return 10
+    print(entry.get('command') or '')
+    env = entry.get('env')
+    if isinstance(env, dict):
+        for key, value in env.items():
+            print('%s=%s' % (key, value))
     return 0
 
 
@@ -333,20 +359,36 @@ def codex_add(path, name, command):
     return 0
 
 
-ACTIONS = {'desktop-add': desktop_add, 'codex-add': codex_add}
+ACTIONS = {'desktop-add': desktop_add, 'codex-add': codex_add, 'claude-code-entry': claude_code_entry}
 
 if __name__ == '__main__':
     try:
         sys.exit(ACTIONS[sys.argv[1]](*sys.argv[2:]))
     except Exception as error:
-        note('Could not update %s: %s' % (sys.argv[2], error))
+        note('Could not use %s: %s' % (sys.argv[2], error))
         sys.exit(1)
 PYTHON
 }
 
+# Adds the server to Claude Code at user scope, with the KEY=VALUE lines in $3 as its
+# environment. -e takes a list, so it must come after the name, or it swallows the name.
+register_claude_code() {
+    local claude=$1 server=$2 pairs=$3 pair
+    set -- mcp add --scope user "$MCP_NAME"
+    while IFS= read -r pair; do
+        if [ -n "$pair" ]; then
+            set -- "$@" -e "$pair"
+        fi
+    done <<EOF
+$pairs
+EOF
+    set -- "$@" -- "$server"
+    run_indented "$claude" "$@"
+}
+
 install_archibridge() {
     local archicads versions version install addons uv package bin server tool_dir candidate python
-    local tapir_folder tapir_manual="" tapir_added=0 configured="" claude_cli codex_cli
+    local tapir_folder tapir_manual="" tapir_added=0 configured="" claude_cli codex_cli claude_entry claude_state
     local desktop_folder desktop_config desktop_found=0 desktop_done=0 state
 
     echo ""
@@ -448,13 +490,29 @@ EOF
 
     claude_cli=$(find_tool claude)
     if [ -n "$claude_cli" ]; then
-        step "Registering the archicad MCP server with Claude Code..."
-        "$claude_cli" mcp remove --scope user "$MCP_NAME" >/dev/null 2>&1
-        if run_indented "$claude_cli" mcp add --scope user "$MCP_NAME" -- "$server"; then
-            ok "Claude Code: done (user scope)."
+        # An entry that already runs this server is left as it is, with any settings the user added.
+        claude_entry=""
+        claude_state=10
+        if [ -n "$python" ] && [ -n "$CONFIG_HELPER" ]; then
+            claude_entry=$("$python" -I "$CONFIG_HELPER" claude-code-entry "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" "$MCP_NAME" 2>/dev/null)
+            claude_state=$?
+        fi
+        if [ "$claude_state" != 0 ]; then
+            claude_entry=""
+        fi
+        if [ "$claude_state" = 0 ] && [ "$(printf '%s\n' "$claude_entry" | sed -n 1p)" = "$server" ]; then
+            ok "Claude Code: already registered (user scope)."
             configured="$configured, Claude Code"
         else
-            note "Claude Code registration failed. Try later: claude mcp add --scope user $MCP_NAME -- \"$server\""
+            step "Registering the archicad MCP server with Claude Code..."
+            "$claude_cli" mcp remove --scope user "$MCP_NAME" >/dev/null 2>&1
+            # Keep the environment variables of an earlier entry, such as ARCHIBRIDGE_POLICY.
+            if register_claude_code "$claude_cli" "$server" "$(printf '%s\n' "$claude_entry" | sed 1d)"; then
+                ok "Claude Code: done (user scope)."
+                configured="$configured, Claude Code"
+            else
+                note "Claude Code registration failed. Try later: claude mcp add --scope user $MCP_NAME -- \"$server\""
+            fi
         fi
     else
         note "Claude Code command not found: skipped (normal if you only use Claude Desktop)."
