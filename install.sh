@@ -539,7 +539,9 @@ EOF
 
 # The whole output also goes to a log, which an issue report can attach. Nothing reads the
 # terminal: when the script comes from curl, the rest of it would be read as input.
-if [ "$(uname -s)" = "Darwin" ] && [ -n "$HOME" ] && mkdir -p "${LOG_FILE%/*}" 2>/dev/null && : 2>/dev/null > "$LOG_FILE"; then
+# A run as root, which the installer refuses, writes no log: sudo keeps the user's HOME, so it
+# would empty the user's log or leave one owned by root that later runs can't write.
+if [ "$(uname -s)" = "Darwin" ] && [ "$(id -u)" != "0" ] && [ -n "$HOME" ] && mkdir -p "${LOG_FILE%/*}" 2>/dev/null && : 2>/dev/null > "$LOG_FILE"; then
     install_archibridge < /dev/null 2>&1 | tee -a "$LOG_FILE"
     archibridge_status=${PIPESTATUS[0]}
     echo "Install log: $LOG_FILE"
