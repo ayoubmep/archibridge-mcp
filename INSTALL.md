@@ -134,7 +134,7 @@ You are probably running in the session that did the install: the `archicad_*` t
 |---|---|
 | `[XX] This runs as root (sudo)` | Run the same command again without `sudo`. |
 | `[XX] uv could not be installed` | The network may block astral.sh. Install uv from https://docs.astral.sh/uv/ (or with `brew install uv`), then run the installer again. |
-| `[XX] The server could not be installed` | Read the uv output above it. Usually the network blocks GitHub or PyPI. Fix that, then run the installer again. |
+| `[XX] The server could not be installed` | Read the uv output above it. Usually the network blocks GitHub or PyPI. Fix that, then run the installer again. If uv says a package has no ready-made build (wheel) for this Mac, don't install compilers to work around it: open an issue with the install log. |
 | `Tapir was not added (declined)` or `(failed)` | The password prompt was cancelled, or the user is not an administrator. Run the installer again and have the user enter their password, or an administrator's name and password. If that isn't possible, the user can add the `.bundle` the installer printed in Archicad: **Options > Add-On Manager > Edit List of Available Add-Ons > Add**. |
 | `The Add-Ons folder of Archicad <version> was not found` | Use the Add-On Manager with the `.bundle` the installer printed, as above. |
 | `"tapir": null` | Restart Archicad. Check that `Add-Ons/Tapir` in the Archicad folder (usually `/Applications/GRAPHISOFT/Archicad <version>`) holds `TapirAddOn_AC<version>_Mac.bundle`. |

@@ -431,7 +431,12 @@ install_archibridge() {
     # 3. The MCP server
     package=$(package_source)
     step "Installing the ArchiBridge server from $package..."
-    if ! run_indented "$uv" tool install --force --reinstall --refresh --python "$PYTHON_VERSION" "$package"; then
+    # A Mac has no compiler unless Xcode's tools are installed, so the dependencies with compiled
+    # code may only come as ready-made builds: uv then picks the newest version that has one for
+    # this Mac. For example, cryptography 49 and later have none for Intel Macs.
+    if ! run_indented "$uv" tool install --force --reinstall --refresh --python "$PYTHON_VERSION" \
+        --no-build-package cryptography --no-build-package cffi \
+        --no-build-package pydantic-core --no-build-package rpds-py "$package"; then
         fail "The server could not be installed. Read the uv output above, then run this installer again."
         return 1
     fi
@@ -597,7 +602,9 @@ EOF
 
 # The whole output also goes to a log, which an issue report can attach. Nothing reads the
 # terminal: when the script comes from curl, the rest of it would be read as input.
-if [ "$(uname -s)" = "Darwin" ] && [ -n "$HOME" ] && mkdir -p "${LOG_FILE%/*}" 2>/dev/null && : 2>/dev/null > "$LOG_FILE"; then
+# A run as root, which the installer refuses, writes no log: sudo keeps the user's HOME, so it
+# would empty the user's log or leave one owned by root that later runs can't write.
+if [ "$(uname -s)" = "Darwin" ] && [ "$(id -u)" != "0" ] && [ -n "$HOME" ] && mkdir -p "${LOG_FILE%/*}" 2>/dev/null && : 2>/dev/null > "$LOG_FILE"; then
     install_archibridge < /dev/null 2>&1 | tee -a "$LOG_FILE"
     archibridge_status=${PIPESTATUS[0]}
     echo "Install log: $LOG_FILE"
