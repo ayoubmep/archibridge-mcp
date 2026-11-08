@@ -389,7 +389,12 @@ install_archibridge() {
     # 3. The MCP server
     package=$(package_source)
     step "Installing the ArchiBridge server from $package..."
-    if ! run_indented "$uv" tool install --force --reinstall --refresh --python "$PYTHON_VERSION" "$package"; then
+    # A Mac has no compiler unless Xcode's tools are installed, so the dependencies with compiled
+    # code may only come as ready-made builds: uv then picks the newest version that has one for
+    # this Mac. For example, cryptography 49 and later have none for Intel Macs.
+    if ! run_indented "$uv" tool install --force --reinstall --refresh --python "$PYTHON_VERSION" \
+        --no-build-package cryptography --no-build-package cffi \
+        --no-build-package pydantic-core --no-build-package rpds-py "$package"; then
         fail "The server could not be installed. Read the uv output above, then run this installer again."
         return 1
     fi
