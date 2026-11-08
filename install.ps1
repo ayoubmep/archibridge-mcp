@@ -256,6 +256,33 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
         return $true
     }
 
+    # ConvertFrom-Json refuses a whole file when two keys differ only by case, and the projects
+    # list in .claude.json can have such keys (C:/x and c:/x). This reads the file with a parser
+    # that keeps them apart and returns the archicad entry as ConvertFrom-Json would, or $null.
+    function Get-ClaudeCodeEntryKeepingCase([string]$Text) {
+        try {
+            if ($PSVersionTable.PSVersion.Major -ge 6) {
+                $config = ConvertFrom-Json -InputObject $Text -AsHashtable
+            }
+            else {
+                Add-Type -AssemblyName System.Web.Extensions
+                $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+                $serializer.MaxJsonLength = [int]::MaxValue
+                $config = $serializer.DeserializeObject($Text)
+            }
+            if (($config -is [System.Collections.IDictionary]) -and $config.ContainsKey('mcpServers')) {
+                $servers = $config['mcpServers']
+                if (($servers -is [System.Collections.IDictionary]) -and $servers.ContainsKey($McpName)) {
+                    return (ConvertTo-Json -InputObject $servers[$McpName] -Depth 16 | ConvertFrom-Json)
+                }
+            }
+        }
+        catch {
+            return $null
+        }
+        return $null
+    }
+
     # The archicad entry that Claude Code keeps at user scope in its .claude.json, or $null.
     function Get-ClaudeCodeEntry {
         $folder = $env:USERPROFILE
@@ -263,10 +290,16 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
         $path = Join-Path $folder '.claude.json'
         if (-not (Test-Path -LiteralPath $path)) { return $null }
         try {
-            $config = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json
+            $text = [System.IO.File]::ReadAllText($path)
         }
         catch {
             return $null
+        }
+        try {
+            $config = $text | ConvertFrom-Json
+        }
+        catch {
+            return (Get-ClaudeCodeEntryKeepingCase $text)
         }
         if (($config -is [System.Management.Automation.PSCustomObject]) -and $config.mcpServers -and ($config.mcpServers.PSObject.Properties.Name -contains $McpName)) {
             return $config.mcpServers.$McpName
