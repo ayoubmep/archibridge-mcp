@@ -3,7 +3,8 @@
 # The macOS job checks what the simulated-Mac tests check, on a real Mac: the bash 3.2 that
 # ships with macOS, only macOS's own tools on PATH, uv installed from astral.sh, the Tapir
 # downloads and their signatures, the Add-Ons folder in several languages, the Claude
-# Desktop, Claude Code and Codex configs, running again, piped from curl, and uninstall.
+# Desktop, Claude Code and Codex configs, the installed server started the way the AI apps
+# start it, running again, piped from curl, and uninstall.
 #
 # What CI can't cover: a real Archicad (none runs here, so Tapir goes into fake Archicad
 # folders and `doctor` finds no instance), and the macOS password prompt (the fake Add-Ons
@@ -12,8 +13,15 @@ name: Installers
 
 on:
   push:
+    # Not tags: the piped install gets the server from refs/heads/<branch>.zip.
+    branches: ['**']
   pull_request:
   workflow_dispatch:
+  # The install can break without a commit here: it takes the latest uv, the latest PyPI
+  # releases of the server's dependencies (not uv.lock) and Tapir's downloads.
+  # GitHub runs schedules from the default branch only.
+  schedule:
+    - cron: '0 6 * * 1'
 
 permissions:
   contents: read
@@ -33,6 +41,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          # The Python that install.sh and install.ps1 give users.
+          python-version: '3.12'
       - run: uv run --group dev pytest
       - name: Parse the PowerShell installers with Windows PowerShell 5.1
         if: runner.os == 'Windows'
@@ -107,8 +118,12 @@ jobs:
       - name: Install Claude Code, so the installer registers the server with it
         run: |
           npm install -g @anthropic-ai/claude-code
-          # The installer runs with only macOS's own tools on PATH, plus this folder.
-          echo "MACOS_PATH=/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$(command -v claude)")" >> "$GITHUB_ENV"
+          # The installer runs with only macOS's own tools on PATH, plus claude and the node it
+          # runs on. Not their folder: on the runners it is Homebrew's, with everything in it.
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -s "$(command -v claude)" "$RUNNER_TEMP/bin/claude"
+          ln -s "$(command -v node)" "$RUNNER_TEMP/bin/node"
+          echo "MACOS_PATH=/usr/bin:/bin:/usr/sbin:/sbin:$RUNNER_TEMP/bin" >> "$GITHUB_ENV"
 
       - name: Install with /bin/bash and macOS's own tools
         run: env PATH="$MACOS_PATH" /bin/bash install.sh | tee install-1.txt
@@ -118,6 +133,10 @@ jobs:
           if grep -F '[XX]' install-1.txt; then exit 1; fi
           grep -F '[OK] Archicad found: 25, 26, 27, 28, 29, 30' install-1.txt
           grep -F '[..] Installing uv from astral.sh' install-1.txt
+          # uv compiles a dependency that has no wheel for this Mac. The runners have Xcode, but
+          # a new Mac has no compiler, so only ArchiBridge itself may be built.
+          grep -E '^ *Built archibridge @ ' install-1.txt
+          if grep -E '^ *Built ' install-1.txt | grep -vF ' archibridge @ '; then exit 1; fi
           grep -F '[OK] Tapir is already in Archicad 26: left as it is.' install-1.txt
           grep -F '[!!] The Add-Ons folder of Archicad 30 was not found.' install-1.txt
           for place in "Archicad 25/Add-Ons" "Archicad 27/Расширения ArchiCAD" "Archicad 28/Extensions" "Archicad 29/Add-Ons"; do
@@ -153,6 +172,41 @@ jobs:
           "$HOME/.local/bin/archibridge" doctor | tee doctor.json || true
           python3 -c "import json; assert json.load(open('doctor.json'))['instances'] == []"
           test -s "$HOME/Library/Logs/archibridge-install.log"
+
+      - name: Start the installed server the way the AI apps do
+        # A server that never answers fails here instead of holding the Mac for 30 minutes.
+        timeout-minutes: 2
+        run: |
+          python3 - "$HOME/.local/bin/archibridge" <<'EOF'
+          import json, subprocess, sys
+          server = subprocess.Popen([sys.argv[1]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding='utf-8')
+          def send(message):
+              server.stdin.write(json.dumps(message) + '\n')
+              server.stdin.flush()
+          def reply(request_id):
+              for line in server.stdout:
+                  message = json.loads(line)
+                  if message.get('id') == request_id:
+                      return message
+              raise SystemExit('The server stopped before it answered request %d.' % request_id)
+          send({'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'ci', 'version': '1'}}})
+          reply(1)
+          send({'jsonrpc': '2.0', 'method': 'notifications/initialized'})
+          send({'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'})
+          tools = sorted(tool['name'] for tool in reply(2)['result']['tools'])
+          print('Tools:', ', '.join(tools))
+          assert {'archicad_instances', 'archicad_get_skill', 'archicad_search_commands'} <= set(tools), tools
+          # Neither call needs Archicad: they read the skill and the command catalog installed with the server.
+          send({'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'archicad_get_skill', 'arguments': {}}})
+          skill = reply(3)['result']
+          assert not skill.get('isError') and 'Archicad' in skill['content'][0]['text'], skill
+          send({'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call', 'params': {'name': 'archicad_search_commands', 'arguments': {'query': 'wall'}}})
+          search = reply(4)['result']
+          assert not search.get('isError'), search
+          server.stdin.close()
+          server.wait(timeout=30)
+          print('Skill: %d characters. Search: answered.' % len(skill['content'][0]['text']))
+          EOF
 
       - name: Run again, with a damaged download in the cache
         run: |
