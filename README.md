@@ -130,7 +130,7 @@ What the AI reads from your project (names, properties, results, pictures) is se
 
 ## Update
 
-Run the install command again. It updates everything without duplicating anything, and keeps the environment variables you set on the `archicad` entry in Claude Desktop and Claude Code, such as `ARCHIBRIDGE_POLICY`.
+Run the install command again. It updates everything without duplicating anything, and keeps the environment variables you set on the `archicad` entry in Claude Desktop, Claude Code and Codex, such as `ARCHIBRIDGE_POLICY`.
 
 ## Uninstall
 

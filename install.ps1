@@ -307,6 +307,22 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
         return $null
     }
 
+    # The archicad entry's transport (command, args, env) as codex mcp get --json shows it, or $null.
+    function Get-CodexEntry([string]$Exe) {
+        $result = Get-NativeText $Exe @('mcp', 'get', $McpName, '--json')
+        if (($result.Code -ne 0) -or (-not $result.Text)) { return $null }
+        try {
+            $entry = $result.Text | ConvertFrom-Json
+        }
+        catch {
+            return $null
+        }
+        if (($entry -is [System.Management.Automation.PSCustomObject]) -and $entry.transport -and ($entry.transport.type -eq 'stdio')) {
+            return $entry.transport
+        }
+        return $null
+    }
+
     # Adds [mcp_servers.archicad] to Codex's config.toml when the codex command is not available.
     function Set-CodexTomlEntry([string]$Exe) {
         $path = Join-Path $env:USERPROFILE '.codex\config.toml'
@@ -474,14 +490,30 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
 
     $codexCli = Find-Tool 'codex'
     if ($codexCli) {
-        Write-Step 'Registering the archicad MCP server with Codex (ChatGPT)...'
-        [void](Get-NativeText $codexCli @('mcp', 'remove', $McpName))
-        if ((Invoke-Native $codexCli @('mcp', 'add', $McpName, '--', $server)) -eq 0) {
-            Write-Ok 'Codex / ChatGPT: done.'
+        # An entry that already runs this server is left as it is, with any settings the user added.
+        $existing = Get-CodexEntry $codexCli
+        if ($existing -and ($existing.command -eq $server) -and (@($existing.args | Where-Object { $_ }).Count -eq 0)) {
+            Write-Ok 'Codex / ChatGPT: already registered.'
             $configured += 'ChatGPT / Codex'
         }
         else {
-            Write-Note ('Codex registration failed. Try later: codex mcp add {0} -- "{1}"' -f $McpName, $server)
+            Write-Step 'Registering the archicad MCP server with Codex (ChatGPT)...'
+            [void](Get-NativeText $codexCli @('mcp', 'remove', $McpName))
+            # Keep the environment variables of an earlier entry, such as ARCHIBRIDGE_POLICY.
+            $codexArguments = @('mcp', 'add')
+            if ($existing -and $existing.env) {
+                foreach ($property in @($existing.env.PSObject.Properties)) {
+                    $codexArguments += @('--env', ('{0}={1}' -f $property.Name, $property.Value))
+                }
+            }
+            $codexArguments += @($McpName, '--', $server)
+            if ((Invoke-Native $codexCli $codexArguments) -eq 0) {
+                Write-Ok 'Codex / ChatGPT: done.'
+                $configured += 'ChatGPT / Codex'
+            }
+            else {
+                Write-Note ('Codex registration failed. Try later: codex mcp add {0} -- "{1}"' -f $McpName, $server)
+            }
         }
     }
     elseif (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.codex')) {

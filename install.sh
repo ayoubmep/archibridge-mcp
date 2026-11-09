@@ -359,7 +359,33 @@ def codex_add(path, name, command):
     return 0
 
 
-ACTIONS = {'desktop-add': desktop_add, 'codex-add': codex_add, 'claude-code-entry': claude_code_entry}
+def codex_entry(text):
+    """Prints the command of the entry that `codex mcp get --json` shows, then its env as
+    KEY=VALUE lines. An entry started with arguments prints an empty command."""
+    try:
+        server = json.loads(text)
+    except ValueError:
+        return 2
+    transport = server.get('transport') if isinstance(server, dict) else None
+    if not isinstance(transport, dict) or transport.get('type') != 'stdio':
+        return 10
+    print('' if transport.get('args') else (transport.get('command') or ''))
+    env = transport.get('env')
+    if isinstance(env, dict):
+        for key, value in env.items():
+            pair = '%s=%s' % (key, value)
+            # One variable per line: a key with = or a value on several lines can't be passed on.
+            if '=' not in str(key) and '\n' not in pair and '\r' not in pair:
+                print(pair)
+    return 0
+
+
+ACTIONS = {
+    'desktop-add': desktop_add,
+    'codex-add': codex_add,
+    'claude-code-entry': claude_code_entry,
+    'codex-entry': codex_entry,
+}
 
 if __name__ == '__main__':
     try:
@@ -386,9 +412,25 @@ EOF
     run_indented "$claude" "$@"
 }
 
+# Adds the server to Codex, with the KEY=VALUE lines in $3 as its environment.
+register_codex() {
+    local codex=$1 server=$2 pairs=$3 pair
+    set -- mcp add
+    while IFS= read -r pair; do
+        if [ -n "$pair" ]; then
+            set -- "$@" --env "$pair"
+        fi
+    done <<EOF
+$pairs
+EOF
+    set -- "$@" "$MCP_NAME" -- "$server"
+    run_indented "$codex" "$@"
+}
+
 install_archibridge() {
     local archicads versions version install addons uv package bin server tool_dir candidate python
     local tapir_folder tapir_manual="" tapir_added=0 configured="" claude_cli codex_cli claude_entry claude_state
+    local codex_json codex_entry codex_state
     local desktop_folder desktop_config desktop_found=0 desktop_done=0 state
 
     echo ""
@@ -544,13 +586,30 @@ EOF
 
     codex_cli=$(find_tool codex)
     if [ -n "$codex_cli" ]; then
-        step "Registering the archicad MCP server with Codex (ChatGPT)..."
-        "$codex_cli" mcp remove "$MCP_NAME" >/dev/null 2>&1
-        if run_indented "$codex_cli" mcp add "$MCP_NAME" -- "$server"; then
-            ok "Codex / ChatGPT: done."
+        # An entry that already runs this server is left as it is, with any settings the user added.
+        codex_entry=""
+        codex_state=10
+        if [ -n "$python" ] && [ -n "$CONFIG_HELPER" ]; then
+            codex_json=$("$codex_cli" mcp get "$MCP_NAME" --json 2>/dev/null)
+            codex_entry=$("$python" -I "$CONFIG_HELPER" codex-entry "$codex_json" 2>/dev/null)
+            codex_state=$?
+        fi
+        if [ "$codex_state" != 0 ]; then
+            codex_entry=""
+        fi
+        if [ "$codex_state" = 0 ] && [ "$(printf '%s\n' "$codex_entry" | sed -n 1p)" = "$server" ]; then
+            ok "Codex / ChatGPT: already registered."
             configured="$configured, ChatGPT / Codex"
         else
-            note "Codex registration failed. Try later: codex mcp add $MCP_NAME -- \"$server\""
+            step "Registering the archicad MCP server with Codex (ChatGPT)..."
+            "$codex_cli" mcp remove "$MCP_NAME" >/dev/null 2>&1
+            # Keep the environment variables of an earlier entry, such as ARCHIBRIDGE_POLICY.
+            if register_codex "$codex_cli" "$server" "$(printf '%s\n' "$codex_entry" | sed 1d)"; then
+                ok "Codex / ChatGPT: done."
+                configured="$configured, ChatGPT / Codex"
+            else
+                note "Codex registration failed. Try later: codex mcp add $MCP_NAME -- \"$server\""
+            fi
         fi
     elif [ -d "$HOME/.codex" ]; then
         if [ -n "$python" ] && [ -n "$CONFIG_HELPER" ]; then
