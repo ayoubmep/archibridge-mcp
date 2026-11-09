@@ -34,8 +34,8 @@ Other Archicad versions, other languages, macOS and the MEP review have not been
 In Claude Desktop, open the **Code** tab (or start Claude Code), then paste:
 
 ```
-Install ArchiBridge to connect Claude to my Archicad: https://github.com/ayoubmep/archibridge-mcp
-Follow INSTALL.md step by step, then tell me what to do next.
+Install ArchiBridge to connect Claude to my Archicad.
+Follow https://bimspeak.com/archibridge/INSTALL.md step by step, then tell me what to do next.
 ```
 
 Claude checks whether you use Windows or macOS and runs the matching installer. It asks for permission before each command. Your system also asks once, to copy Tapir into Archicad's folder: on Windows click **Yes**, on a Mac enter your password.
@@ -45,13 +45,13 @@ Claude checks whether you use Windows or macOS and runs the matching installer. 
 **Windows**: open **PowerShell** (not as administrator) and paste:
 
 ```powershell
-irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.ps1 | iex
+irm https://bimspeak.com/archibridge/install.ps1 | iex
 ```
 
 **macOS**: open **Terminal** (Applications > Utilities) and paste:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.sh | bash
+curl -fsSL https://bimspeak.com/archibridge/install.sh | bash
 ```
 
 ### Then
@@ -137,13 +137,13 @@ Run the install command again. It updates everything without duplicating anythin
 Windows, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.ps1 | iex
+irm https://bimspeak.com/archibridge/uninstall.ps1 | iex
 ```
 
 macOS, in Terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.sh | bash
+curl -fsSL https://bimspeak.com/archibridge/uninstall.sh | bash
 ```
 
 Tapir stays in Archicad, because other tools can use it.

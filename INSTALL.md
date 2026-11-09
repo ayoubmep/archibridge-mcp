@@ -36,7 +36,7 @@ The installer never changes other MCP servers. It backs up the Claude Desktop co
 Run this in PowerShell as the normal user, not as administrator. Give the command a long timeout (10 minutes):
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://bimspeak.com/archibridge/install.ps1 | iex"
 ```
 
 Read the whole output (see [Read the output](#read-the-output)). The installer saves a full log to `%TEMP%\archibridge-install.log`.
@@ -63,7 +63,7 @@ Then go to [Read the doctor output](#read-the-doctor-output).
 Run this in a shell (zsh or bash) as the normal user, not with `sudo`. Give the command a long timeout (10 minutes):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.sh | bash
+curl -fsSL https://bimspeak.com/archibridge/install.sh | bash
 ```
 
 It needs nothing but macOS itself: no Homebrew, Python, Node or Xcode tools. It installs uv if it is missing, and uv brings the server's own Python.
@@ -156,13 +156,13 @@ You are probably running in the session that did the install: the `archicad_*` t
 Windows:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://bimspeak.com/archibridge/uninstall.ps1 | iex"
 ```
 
 macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.sh | bash
+curl -fsSL https://bimspeak.com/archibridge/uninstall.sh | bash
 ```
 
 It removes the MCP registrations, the server and the downloaded Tapir files. Tapir stays in Archicad, because other tools can use it.

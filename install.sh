@@ -7,20 +7,24 @@
 # Run it in Terminal as your normal user, not with sudo. If Archicad's Add-Ons folder belongs
 # to an administrator, macOS asks once for a password to copy Tapir into it.
 #
-#     curl -fsSL https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.sh | bash
+#     curl -fsSL https://bimspeak.com/archibridge/install.sh | bash
 #
 # Running it again is safe: it updates everything without duplicating it.
 # It needs nothing but macOS: uv, installed if missing, brings the server's own Python.
 #
 # Optional environment variables, set before running:
-#     ARCHIBRIDGE_REPO     GitHub repo to install from (default ayoubmep/archibridge-mcp)
-#     ARCHIBRIDGE_BRANCH   Branch to install from (default main)
+#     ARCHIBRIDGE_SOURCE   Web folder the one-line install downloads ArchiBridge from
+#                          (default https://bimspeak.com/archibridge)
+#     ARCHIBRIDGE_REPO     Install from this GitHub repo instead (default ayoubmep/archibridge-mcp)
+#     ARCHIBRIDGE_BRANCH   Install from this GitHub branch instead (default main)
 #
 # Keep this file ASCII-only and compatible with the bash 3.2 that ships with macOS:
 # no associative arrays, no mapfile, no ${var,,}, no empty "${array[@]}".
 
 REPO=${ARCHIBRIDGE_REPO:-ayoubmep/archibridge-mcp}
 BRANCH=${ARCHIBRIDGE_BRANCH:-main}
+DOWNLOAD_SITE=${ARCHIBRIDGE_SOURCE:-https://bimspeak.com/archibridge}
+DOWNLOAD_SITE=${DOWNLOAD_SITE%/}
 MCP_NAME=archicad
 PYTHON_VERSION=3.12
 TAPIR_VERSION=1.7.3
@@ -81,7 +85,8 @@ find_tool() {
     return 1
 }
 
-# A local clone installs from its own folder, the one-line install from GitHub.
+# A local clone installs from its own folder, the one-line install from $DOWNLOAD_SITE.
+# GitHub is for testing a branch: set ARCHIBRIDGE_REPO or ARCHIBRIDGE_BRANCH.
 package_source() {
     local folder
     if [ -n "$SCRIPT_FILE" ] && [ -f "$SCRIPT_FILE" ]; then
@@ -91,7 +96,11 @@ package_source() {
             return
         fi
     fi
-    printf 'https://github.com/%s/archive/refs/heads/%s.zip\n' "$REPO" "$BRANCH"
+    if [ -n "${ARCHIBRIDGE_REPO:-}" ] || [ -n "${ARCHIBRIDGE_BRANCH:-}" ]; then
+        printf 'https://github.com/%s/archive/refs/heads/%s.zip\n' "$REPO" "$BRANCH"
+    else
+        printf '%s/archibridge-mcp-main.zip\n' "$DOWNLOAD_SITE"
+    fi
 }
 
 sha256_of() {
@@ -397,7 +406,7 @@ install_archibridge() {
 
     if [ "$(uname -s)" != "Darwin" ]; then
         fail "This installer is for macOS, and Archicad runs only on macOS and Windows. On Windows, run this in PowerShell:"
-        echo "     irm https://raw.githubusercontent.com/$REPO/$BRANCH/install.ps1 | iex"
+        echo "     irm $DOWNLOAD_SITE/install.ps1 | iex"
         return 1
     fi
     if [ "$(id -u)" = "0" ]; then

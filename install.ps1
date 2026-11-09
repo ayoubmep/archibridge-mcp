@@ -7,13 +7,15 @@ through a local MCP server, and installs the Tapir add-on that gives it full mod
 Run it in a normal PowerShell window (not as administrator). Windows asks for permission once,
 to copy Tapir into Archicad's Add-Ons folder in Program Files.
 
-    irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/install.ps1 | iex
+    irm https://bimspeak.com/archibridge/install.ps1 | iex
 
 Running it again is safe: it updates everything without duplicating it.
 
 Optional environment variables, set before running:
-    ARCHIBRIDGE_REPO     GitHub repo to install from (default ayoubmep/archibridge-mcp)
-    ARCHIBRIDGE_BRANCH   Branch to install from (default main)
+    ARCHIBRIDGE_SOURCE   Web folder the one-line install downloads ArchiBridge from
+                         (default https://bimspeak.com/archibridge)
+    ARCHIBRIDGE_REPO     Install from this GitHub repo instead (default ayoubmep/archibridge-mcp)
+    ARCHIBRIDGE_BRANCH   Install from this GitHub branch instead (default main)
 #>
 
 function Install-ArchiBridge {
@@ -24,6 +26,8 @@ function Install-ArchiBridge {
     if ($env:ARCHIBRIDGE_REPO) { $Repo = $env:ARCHIBRIDGE_REPO }
     $Branch = 'main'
     if ($env:ARCHIBRIDGE_BRANCH) { $Branch = $env:ARCHIBRIDGE_BRANCH }
+    $DownloadSite = 'https://bimspeak.com/archibridge'
+    if ($env:ARCHIBRIDGE_SOURCE) { $DownloadSite = $env:ARCHIBRIDGE_SOURCE.TrimEnd('/') }
     $McpName = 'archicad'
     $PythonVersion = '3.12'
 
@@ -128,7 +132,11 @@ function Install-ArchiBridge {
         if ($PSScriptRoot -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'pyproject.toml'))) {
             return $PSScriptRoot
         }
-        return ('https://github.com/{0}/archive/refs/heads/{1}.zip' -f $Repo, $Branch)
+        # GitHub is for testing a branch: set ARCHIBRIDGE_REPO or ARCHIBRIDGE_BRANCH.
+        if ($env:ARCHIBRIDGE_REPO -or $env:ARCHIBRIDGE_BRANCH) {
+            return ('https://github.com/{0}/archive/refs/heads/{1}.zip' -f $Repo, $Branch)
+        }
+        return ('{0}/archibridge-mcp-main.zip' -f $DownloadSite)
     }
 
     # Downloads the add-on for one Archicad version and checks it against the pinned hash.
@@ -340,7 +348,7 @@ if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '@HASH@') { R
 
     if ($env:OS -ne 'Windows_NT') {
         Write-Fail 'This installer is for Windows. On macOS, run this in Terminal instead:'
-        Write-Host ('     curl -fsSL https://raw.githubusercontent.com/{0}/{1}/install.sh | bash' -f $Repo, $Branch)
+        Write-Host ('     curl -fsSL {0}/install.sh | bash' -f $DownloadSite)
         return
     }
     if (Test-IsAdmin) {

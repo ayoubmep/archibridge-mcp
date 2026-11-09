@@ -4,7 +4,7 @@
 # Removes the archicad MCP connection from your AI apps, the ArchiBridge server and the
 # downloaded Tapir files. Archicad, the Tapir add-on inside it and your projects are not touched.
 #
-#     curl -fsSL https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.sh | bash
+#     curl -fsSL https://bimspeak.com/archibridge/uninstall.sh | bash
 #
 # Keep this file ASCII-only and compatible with the bash 3.2 that ships with macOS.
 
@@ -131,7 +131,7 @@ uninstall_archibridge() {
 
     if [ "$(uname -s)" != "Darwin" ]; then
         printf '[XX] %s\n' "This uninstaller is for macOS. On Windows, run this in PowerShell:"
-        echo "     irm https://raw.githubusercontent.com/ayoubmep/archibridge-mcp/main/uninstall.ps1 | iex"
+        echo "     irm https://bimspeak.com/archibridge/uninstall.ps1 | iex"
         return 1
     fi
     if [ -z "$HOME" ]; then
