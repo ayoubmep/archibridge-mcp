@@ -250,6 +250,79 @@ jobs:
           grep -F 'claude_desktop_config.json is not valid JSON, left untouched.' install-4.txt
           cp "$RUNNER_TEMP/good.json" "$config"
 
+      - name: Keep the Codex entry's settings when run again
+        # A fake codex command, which keeps its MCP servers in a JSON file. Only this step has it
+        # on PATH: the other steps check the config.toml route used when codex is missing.
+        run: |
+          fake="$RUNNER_TEMP/fake-codex"
+          mkdir -p "$fake"
+          cat > "$fake/codex" <<'EOF'
+          #!/usr/bin/python3
+          import json, os, sys
+          path = os.environ['FAKE_CODEX_STATE']
+          servers = json.load(open(path)) if os.path.exists(path) else {}
+          args = sys.argv[1:]
+          with open(path + '.calls', 'a') as log:
+              log.write(' '.join(args) + '\n')
+          if args[:2] == ['mcp', 'get'] and '--json' in args:
+              if args[2] not in servers:
+                  sys.exit("No MCP server named '%s' found." % args[2])
+              server = servers[args[2]]
+              transport = {'type': 'stdio', 'command': server['command'], 'args': server['args'],
+                           'env': server['env'], 'env_vars': [], 'cwd': None}
+              print(json.dumps({'name': args[2], 'enabled': True, 'transport': transport}, indent=2))
+          elif args[:2] == ['mcp', 'remove']:
+              servers.pop(args[2], None)
+          elif args[:2] == ['mcp', 'add'] and '--' in args:
+              options, command = args[2:args.index('--')], args[args.index('--') + 1:]
+              env, names = {}, []
+              while options:
+                  if options[0] == '--env':
+                      key, _, value = options[1].partition('=')
+                      env[key] = value
+                      options = options[2:]
+                  else:
+                      names.append(options.pop(0))
+              assert len(names) == 1, args
+              servers[names[0]] = {'command': command[0], 'args': command[1:], 'env': env or None}
+          else:
+              sys.exit('Unexpected: codex ' + ' '.join(args))
+          json.dump(servers, open(path, 'w'))
+          EOF
+          chmod +x "$fake/codex"
+          export FAKE_CODEX_STATE="$RUNNER_TEMP/codex-servers.json"
+          server="$HOME/.local/bin/archibridge"
+          check() {
+            python3 - "$FAKE_CODEX_STATE" "$@" <<'EOF'
+          import json, sys
+          entry = json.load(open(sys.argv[1]))['archicad']
+          expected = {'command': sys.argv[2], 'args': [], 'env': json.loads(sys.argv[3])}
+          assert entry == expected, entry
+          EOF
+          }
+
+          # Codex without an archicad entry: it is added.
+          env PATH="$fake:$MACOS_PATH" /bin/bash install.sh | tee codex-1.txt
+          if grep -F '[XX]' codex-1.txt; then exit 1; fi
+          grep -F '[OK] Codex / ChatGPT: done.' codex-1.txt
+          check "$server" null
+
+          # The user set readonly on it: running again leaves the entry as it is.
+          printf '{"archicad": {"command": "%s", "args": [], "env": {"ARCHIBRIDGE_POLICY": "readonly"}}}' "$server" > "$FAKE_CODEX_STATE"
+          : > "$FAKE_CODEX_STATE.calls"
+          env PATH="$fake:$MACOS_PATH" /bin/bash install.sh | tee codex-2.txt
+          if grep -F '[XX]' codex-2.txt; then exit 1; fi
+          grep -F '[OK] Codex / ChatGPT: already registered.' codex-2.txt
+          if grep -E '^mcp (add|remove)' "$FAKE_CODEX_STATE.calls"; then exit 1; fi
+          check "$server" '{"ARCHIBRIDGE_POLICY": "readonly"}'
+
+          # An entry for another path: it is registered again, with its environment.
+          printf '{"archicad": {"command": "/old/archibridge", "args": [], "env": {"ARCHIBRIDGE_POLICY": "readonly", "ARCHIBRIDGE_PORT": "19724"}}}' > "$FAKE_CODEX_STATE"
+          env PATH="$fake:$MACOS_PATH" /bin/bash install.sh | tee codex-3.txt
+          if grep -F '[XX]' codex-3.txt; then exit 1; fi
+          grep -F '[OK] Codex / ChatGPT: done.' codex-3.txt
+          check "$server" '{"ARCHIBRIDGE_POLICY": "readonly", "ARCHIBRIDGE_PORT": "19724"}'
+
       - name: Uninstall
         run: |
           env PATH="$MACOS_PATH" /bin/bash uninstall.sh | tee uninstall-1.txt
