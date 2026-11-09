@@ -150,6 +150,9 @@ def test_wrapped_restricted_commands_never_reach_archicad(archicads, name):
         server.archicad_modify("API.ExecuteAddOnCommand", _wrapped(name))
     with pytest.raises(PermissionError):
         server.archicad_modify("ExecuteAddOnCommand", _wrapped(name, "tapircommand"))
+    for wrapper in ("api.executeAddOnCommand", " executeaddoncommand "):
+        with pytest.raises(PermissionError):
+            server.archicad_modify(wrapper, _wrapped(name))
     assert fake.requests == []
 
 

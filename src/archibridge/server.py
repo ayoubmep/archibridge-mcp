@@ -62,9 +62,11 @@ def _unwrap(command: str, parameters: dict | None) -> tuple[str, dict | None]:
     """Turns API.ExecuteAddOnCommand for a Tapir command into that command.
 
     Without this, a restricted command such as QuitArchicad sent inside the wrapper
-    would be checked as "ExecuteAddOnCommand" and slip past the policy.
+    would be checked as "ExecuteAddOnCommand" and slip past the policy. The wrapper's
+    name is matched in any letter case, with or without "API.", like the names it wraps.
     """
-    if command != "API.ExecuteAddOnCommand" or not isinstance(parameters, dict):
+    wrapper = command.strip().casefold().removeprefix("api.")
+    if wrapper != "executeaddoncommand" or not isinstance(parameters, dict):
         return command, parameters
     target = parameters.get("addOnCommandId")
     if not isinstance(target, dict):
