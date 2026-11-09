@@ -113,7 +113,7 @@ Good to know:
 ## Safety
 
 - Reads and modifications are separate tools. Any command ArchiBridge doesn't recognise counts as a modification, so your AI app can ask you first. If you choose "always allow" for `archicad_modify`, it stops asking.
-- `OpenProject`, `CloseProject`, `NewProject`, `QuitArchicad`, `TeamworkSend` and `TeamworkReceive` are refused by default.
+- `OpenProject`, `CloseProject`, `NewProject`, `QuitArchicad`, `TeamworkSend` and `TeamworkReceive` are refused by default, also when sent inside `API.ExecuteAddOnCommand`.
 - With several Archicads open, ArchiBridge refuses to guess which one to use.
 
 Set the `ARCHIBRIDGE_POLICY` environment variable in your MCP config to change this:

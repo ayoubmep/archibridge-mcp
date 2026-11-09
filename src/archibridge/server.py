@@ -58,6 +58,24 @@ def _run(command: str, parameters: dict | None, port: int | None) -> Any:
     return _fit(client.call(command, parameters, client.pick_port(port), timeout))
 
 
+def _unwrap(command: str, parameters: dict | None) -> tuple[str, dict | None]:
+    """Turns API.ExecuteAddOnCommand for a Tapir command into that command.
+
+    Without this, a restricted command such as QuitArchicad sent inside the wrapper
+    would be checked as "ExecuteAddOnCommand" and slip past the policy.
+    """
+    if command != "API.ExecuteAddOnCommand" or not isinstance(parameters, dict):
+        return command, parameters
+    target = parameters.get("addOnCommandId")
+    if not isinstance(target, dict):
+        return command, parameters
+    namespace = str(target.get("commandNamespace", "")).strip().casefold()
+    name = target.get("commandName")
+    if namespace == client.TAPIR_NAMESPACE.casefold() and isinstance(name, str) and name.strip():
+        return name.strip(), parameters.get("addOnCommandParameters")
+    return command, parameters
+
+
 @mcp.tool(annotations=READ_ONLY)
 def archicad_instances() -> dict:
     """Lists the running Archicads: port, version, open project, and Tapir add-on version.
@@ -105,7 +123,7 @@ def archicad_read(command: str, parameters: dict | None = None, port: int | None
     parameters: the command's input object. port: only needed when several Archicads are ready.
     Also allowed: commands that only move the view, such as ChangeWindow and FitInWindow.
     """
-    command = catalog.resolve(command)
+    command, parameters = _unwrap(catalog.resolve(command), parameters)
     if policy.classify(command) != policy.READ:
         raise ValueError(f"{command} is not a read command. Use archicad_modify.")
     return _run(command, parameters, port)
@@ -119,7 +137,7 @@ def archicad_modify(command: str, parameters: dict | None = None, port: int | No
     an item can fail on its own, so read the result. Restricted commands such as QuitArchicad
     and CloseProject are refused unless the user turned on the full policy.
     """
-    command = catalog.resolve(command)
+    command, parameters = _unwrap(catalog.resolve(command), parameters)
     if policy.classify(command) == policy.READ:
         raise ValueError(f"{command} only reads. Use archicad_read.")
     reason = policy.refusal(command)

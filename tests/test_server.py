@@ -136,3 +136,24 @@ def test_errors_reach_the_ai_app_as_text(archicads):
     archicads(project_open=False)
     with pytest.raises(ToolError, match="Open a project"):
         call("archicad_read", command="GetStories")
+
+
+def _wrapped(name, namespace="TapirCommand"):
+    return {"addOnCommandId": {"commandNamespace": namespace, "commandName": name},
+            "addOnCommandParameters": {}}
+
+
+@pytest.mark.parametrize("name", ["QuitArchicad", "CloseProject", "TeamworkSend", "quitarchicad"])
+def test_wrapped_restricted_commands_never_reach_archicad(archicads, name):
+    fake = archicads()
+    with pytest.raises(PermissionError):
+        server.archicad_modify("API.ExecuteAddOnCommand", _wrapped(name))
+    with pytest.raises(PermissionError):
+        server.archicad_modify("ExecuteAddOnCommand", _wrapped(name, "tapircommand"))
+    assert fake.requests == []
+
+
+def test_wrapped_read_still_runs(archicads):
+    fake = archicads()
+    fake.tapir_results["GetStories"] = {"stories": [1]}
+    assert server.archicad_read("API.ExecuteAddOnCommand", _wrapped("GetStories")) == {"stories": [1]}

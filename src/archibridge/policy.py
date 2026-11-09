@@ -54,11 +54,15 @@ RESTRICTED_COMMANDS = {
 }
 
 
+_RESTRICTED_KEYS = {name.casefold() for name in RESTRICTED_COMMANDS}
+_NOT_READ_KEYS = {name.casefold() for name in NOT_READS}
+
+
 def classify(command: str) -> str:
     name = command.removeprefix("API.")
-    if name in RESTRICTED_COMMANDS:
+    if name.casefold() in _RESTRICTED_KEYS:
         return RESTRICTED
-    if name in NOT_READS:
+    if name.casefold() in _NOT_READ_KEYS:
         return MODIFY
     if name in EXTRA_READS or name.startswith(READ_PREFIXES):
         return READ
